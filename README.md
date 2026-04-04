@@ -1,4 +1,4 @@
-# Weather Comparison Bot — Bologna (v4)
+# Weather Comparison Bot — Bologna (v1.1.0)
 
 Fetches hourly weather data from **6 sources**, renders a comparison table as a PNG image, and sends it to a **Telegram chat**.
 
