@@ -272,6 +272,7 @@ def build_html(
     now_str   = datetime.now(ROME_TZ).strftime("%d/%m/%Y %H:%M")
     target_dt = target_date(day)
     day_label = {"today": "Today", "tomorrow": "Tomorrow", "day_after_tomorrow": "Day After Tomorrow"}[day]
+    day_name  = target_dt.strftime("%A")
     date_str  = target_dt.strftime("%d/%m/%Y")
 
     def idx(rows): return {r.hour: r for r in rows}
@@ -345,7 +346,7 @@ def build_html(
 </style>
 </head>
 <body>
-  <h1>🌦 Weather Comparison Bologna — {day_label} {date_str}</h1>
+  <h1>🌦 Weather Comparison Bologna — {day_label}<br>{day_name} {date_str}</h1>
   <div class="sub">
     Generated {now_str} · 44.49°N 11.34°E ·
     Sources: ilmeteo.it · OpenMeteo (ECMWF+GFS) · Visual Crossing · 3bMeteo · meteo.it
