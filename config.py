@@ -41,7 +41,7 @@ os.makedirs(log_dir, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
+    format="%(asctime)s  %(levelname)-8s [%(name)s] %(message)s",
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler(
