@@ -1,0 +1,67 @@
+# ============================================================
+#  weather-compare — .gitignore
+# ============================================================
+
+# ── Project secrets — NEVER commit these ─────────────────────
+utils/.env
+
+# ── Runtime outputs (generated on every run) ──────────────────
+output_weather/*.png
+output_weather/*.json
+output_weather/*.html
+
+# Keep the folder itself in the repo (tracked via .gitkeep)
+!output_weather/.gitkeep
+
+# ── Logs ──────────────────────────────────────────────────────
+log/*.log
+
+# Keep the folder itself
+!log/.gitkeep
+
+# ── WeasyPrint / Pillow intermediate files ────────────────────
+*.html.tmp
+
+# ── Python bytecode ───────────────────────────────────────────
+__pycache__/
+*.py[codz]
+*$py.class
+
+# ── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Distribution / packaging ──────────────────────────────────
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ── Testing & coverage ────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Type checkers ─────────────────────────────────────────────
+.mypy_cache/
+.pytype/
+.pyre/
+
+# ── Linters / formatters ──────────────────────────────────────
+.ruff_cache/
+
+# ── IDEs ──────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# ── OS junk ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

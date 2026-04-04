@@ -1,0 +1,384 @@
+"""
+render/html_builder.py
+======================
+Builds the HTML page for the weather comparison.
+Separated from PNG rendering to allow testing HTML output
+without depending on WeasyPrint.
+"""
+
+from __future__ import annotations
+import os
+import base64
+import logging
+from datetime import datetime
+
+from config import ROME_TZ, deg_to_arrow, target_date
+from icons import build_sprite_css, to_night_class
+from sources.base import HourlyData, IlMeteoHour, estimate_prob, avg_temp
+
+log = logging.getLogger(__name__)
+
+# Color palette per source
+_C = {
+    "ilm":  "#1a4a8a",  "ilm_bg":  "#eef3fb",
+    "oecm": "#2e7d32",  "oecm_bg": "#edf7ee",
+    "ogfs": "#00695c",  "ogfs_bg": "#e0f2f1",
+    "vc":   "#6a1b9a",  "vc_bg":   "#f3e5f5",
+    "bm":   "#b71c1c",  "bm_bg":   "#fce4ec",
+    "mit":  "#e65100",  "mit_bg":  "#fff3e0",
+    "sum":  "#37474f",
+}
+
+_ICON_PATH = os.path.join("utils", "s-cartoon2016b-34.png")
+
+
+def _load_icon_base64() -> str:
+    if os.path.exists(_ICON_PATH):
+        with open(_ICON_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    return ""
+
+
+def _get_icon_html(cls: str) -> str:
+    if not cls:
+        return '<span style="font-size:18px">❓</span>'
+    return f'<span class="s {cls}"></span>'
+
+
+# ── Cell Helpers ──────────────────────────────────────────────────────────────
+
+def _api_cell(r: HourlyData | None, bg: str, night_cls_fn) -> str:
+    if not r:
+        return f'<td class="na" style="background:{bg}">—</td>'
+    icon_cls = night_cls_fn(r.icon_class)
+    rain = (f'<br><span class="rain">💧{r.rain_mm} mm</span>'
+            if r.rain_mm else "")
+    prob = (f'<span class="prob"> {r.prec_prob}%</span>'
+            if r.prec_prob is not None and r.prec_prob > 0 else "")
+    umid = (f'<span class="umid"> 💦{r.humidity}%</span>'
+            if r.humidity else "")
+    return (
+        f'<td style="background:{bg};font-size:11px;padding:4px 6px;'
+        f'text-align:center;vertical-align:middle;border-right:1px solid #ddd;'
+        f'white-space:nowrap;width:110px;min-width:110px;max-width:110px">'
+        f'<div style="display:flex;justify-content:center;align-items:center">'
+        f'{_get_icon_html(icon_cls)}{prob}</div>'
+        f'<b>{r.temp}°</b>{rain}<br>'
+        f'<span class="wind">{deg_to_arrow(r.vento_deg)} {r.vento_kmh} km/h</span>'
+        f'{umid}</td>'
+    )
+
+
+def _scr_cell(r: HourlyData | None, bg: str, night_cls_fn) -> str:
+    if not r:
+        return f'<td class="na" style="background:{bg}">—</td>'
+    icon_cls = night_cls_fn(r.icon_class)
+    rain = (f'<br><span class="rain">💧{r.rain_mm} mm</span>'
+            if r.rain_mm else "")
+    prob = (f'<span class="prob"> {r.prec_prob}%</span>'
+            if r.prec_prob is not None and r.prec_prob > 0 else "")
+    umid = (f' <span class="umid">💦{r.humidity}%</span>'
+            if r.humidity is not None else "")
+    return (
+        f'<td style="background:{bg};font-size:11px;padding:4px 6px;'
+        f'text-align:center;vertical-align:middle;border-right:1px solid #ddd;'
+        f'white-space:nowrap;width:110px;min-width:110px;max-width:110px">'
+        f'<div style="display:flex;justify-content:center;align-items:center">'
+        f'{_get_icon_html(icon_cls)}{prob}</div>'
+        f'<b>{r.temp}°</b>{rain}<br>'
+        f'<span class="wind">{deg_to_arrow(r.vento_deg)} {r.vento_kmh} km/h{umid}</span>'
+        f'</td>'
+    )
+
+
+def _ilm_cell(mod, bg: str) -> str:
+    rain = (f'<br><span class="rain">💧{mod.rain_mm} mm</span>'
+            if mod.rain_mm else "")
+    return (
+        f'<td style="background:{bg};font-size:11px;padding:4px 6px;'
+        f'text-align:center;vertical-align:middle;border-right:1px solid #c5d5ef;'
+        f'white-space:nowrap;width:110px;min-width:110px;max-width:110px">'
+        f'{_get_icon_html(mod.icon_class)}'
+        f'<b>{mod.temp}°</b>{rain}<br>'
+        f'<span class="wind">{deg_to_arrow(mod.vento_deg)} {mod.vento_kmh} km/h</span>'
+        f'</td>'
+    )
+
+
+def _rain_summary_cell(prob_values: list[int | None]) -> str:
+    valid = [v for v in prob_values if v is not None]
+    if not valid:
+        label, bg, fg = "—", "#f0f0f0", "#999"
+    else:
+        avg = round(sum(valid) / len(valid))
+        if avg >= 60:
+            label, bg, fg = f"Yes ({avg}%)",    "#d32f2f", "#fff"
+        elif avg >= 40:
+            label, bg, fg = f"Maybe ({avg}%)", "#f57c00", "#fff"
+        else:
+            label, bg, fg = f"No ({avg}%)",    "#388e3c", "#fff"
+    n_src = (f'<br><span style="font-size:9px;opacity:.8">{len(valid)} sources</span>'
+             if valid else "")
+    return (
+        f'<td style="background:{bg};color:{fg};font-weight:700;'
+        f'font-size:12px;padding:5px 8px;text-align:center;vertical-align:middle;'
+        f'white-space:nowrap;width:100px;min-width:100px;border-left:2px solid rgba(0,0,0,.15)">'
+        f'{label}{n_src}</td>'
+    )
+
+
+def _temp_avg_cell(all_temps: list[str | None]) -> str:
+    avg_t = avg_temp(all_temps)
+    try:
+        t_num = float(avg_t)
+        if   t_num <= 0:  t_bg, t_fg = "#1565c0", "#fff"
+        elif t_num <= 10: t_bg, t_fg = "#0288d1", "#fff"
+        elif t_num <= 18: t_bg, t_fg = "#2e7d32", "#fff"
+        elif t_num <= 25: t_bg, t_fg = "#f57c00", "#fff"
+        else:             t_bg, t_fg = "#c62828", "#fff"
+    except (ValueError, TypeError):
+        t_bg, t_fg = "#90a4ae", "#fff"
+
+    n_valid = len([x for x in all_temps if x and x != "—"])
+    n_src   = f'<br><span style="font-size:9px;opacity:.8">{n_valid} sources</span>'
+    return (
+        f'<td style="background:{t_bg};color:{t_fg};font-weight:700;'
+        f'font-size:12px;padding:5px 8px;text-align:center;vertical-align:middle;'
+        f'white-space:nowrap;width:100px;min-width:100px;border-left:2px solid rgba(0,0,0,.15)">'
+        f'🌡 {avg_t}°{n_src}</td>'
+    )
+
+
+# ── Tbody ─────────────────────────────────────────────────────────────────────
+
+def _build_tbody(
+    all_hours:   list[int],
+    ilm_idx:     dict[int, IlMeteoHour],
+    oecmwf_idx:  dict[int, HourlyData],
+    ogfs_idx:    dict[int, HourlyData],
+    vc_idx:      dict[int, HourlyData],
+    bm_idx:      dict[int, HourlyData],
+    mit_idx:     dict[int, HourlyData],
+    is_day_map:  dict[int, int],
+    n_ilm:       int,
+) -> str:
+    C = _C
+
+    def night(cls: str, hour: int) -> str:
+        if is_day_map.get(hour, 1) == 1:
+            return cls
+        return to_night_class(cls)
+
+    tbody = ""
+    for hour in all_hours:
+        row_bg = ' style="background:#f8f9fa"' if hour % 2 == 0 else ""
+        tbody += f"<tr{row_bg}>"
+        tbody += f'<td class="hour">{hour:02d}:00</td>'
+
+        # ── ilmeteo: n_ilm columns ────────────────────────────────────────────
+        ilm = ilm_idx.get(hour)
+        for i in range(n_ilm):
+            if ilm and i < len(ilm.models):
+                tbody += _ilm_cell(ilm.models[i], C["ilm_bg"])
+            else:
+                tbody += f'<td class="na" style="background:{C["ilm_bg"]}">—</td>'
+
+        # ── API and scraping ──────────────────────────────────────────────────
+        tbody += _api_cell(oecmwf_idx.get(hour), C["oecm_bg"], lambda c, h=hour: night(c, h))
+        tbody += _api_cell(ogfs_idx.get(hour),   C["ogfs_bg"], lambda c, h=hour: night(c, h))
+        tbody += _api_cell(vc_idx.get(hour),     C["vc_bg"],   lambda c, h=hour: night(c, h))
+        tbody += _scr_cell(bm_idx.get(hour),     C["bm_bg"],   lambda c, h=hour: night(c, h))
+        tbody += _scr_cell(mit_idx.get(hour),    C["mit_bg"],  lambda c, h=hour: night(c, h))
+
+        # ── Rain? ─────────────────────────────────────────────────────────────
+        probs: list[int | None] = []
+        if ilm:
+            for mod in ilm.models[:3]:
+                p = estimate_prob(HourlyData(
+                    hour=hour, icon_class=mod.icon_class,
+                    rain_mm=mod.rain_mm, prec_prob=mod.prec_prob,
+                ))
+                if p is not None:
+                    probs.append(p)
+        for src in [oecmwf_idx.get(hour), ogfs_idx.get(hour),
+                    vc_idx.get(hour), bm_idx.get(hour), mit_idx.get(hour)]:
+            p = estimate_prob(src)
+            if p is not None:
+                probs.append(p)
+        tbody += _rain_summary_cell(probs)
+
+        # ── Avg Temp ──────────────────────────────────────────────────────────
+        temps: list[str | None] = []
+        if ilm:
+            temps += [m.temp for m in ilm.models[:3]]
+        for src in [oecmwf_idx.get(hour), ogfs_idx.get(hour),
+                    vc_idx.get(hour), bm_idx.get(hour), mit_idx.get(hour)]:
+            if src:
+                temps.append(src.temp)
+        tbody += _temp_avg_cell(temps)
+
+        tbody += f'<td class="hour" style="border-left:2px solid #ddd; border-right:none">{hour:02d}:00</td>'
+        tbody += "</tr>\n"
+
+    return tbody
+
+
+# ── Header ────────────────────────────────────────────────────────────────────
+
+def _build_header(names: list[str], n_ilm: int) -> tuple[str, str]:
+    """Returns row2_ths."""
+    C = _C
+
+    def hdr2(label: str, col: str, sub: str = "") -> str:
+        sub_html = (f'<br><span style="font-weight:400;font-size:9px">{sub}</span>'
+                    if sub else "")
+        return (f'<th style="background:{col};color:#fff;padding:6px 5px;'
+                f'font-size:10px;border-right:1px solid rgba(255,255,255,.3)">'
+                f'{label}{sub_html}</th>')
+
+    ilm_ths = "".join(
+        f'<th style="background:{C["ilm"]};color:#fff;padding:6px 5px;'
+        f'font-size:10px;border-right:1px solid #2a5ca0">{n}</th>'
+        for n in names
+    )
+
+    row2_ths = (
+        ilm_ths
+        + hdr2("ECMWF IFS",  C["oecm"], "open-meteo.com")
+        + hdr2("GFS",         C["ogfs"], "open-meteo.com")
+        + hdr2("Vis. Cross.", C["vc"],   "visualcrossing.com")
+        + hdr2("3bMeteo",     C["bm"],   "scraping")
+        + hdr2("meteo.it",    C["mit"],  "scraping")
+        + f'<th style="background:{C["sum"]};color:#fff;padding:6px 8px;'
+          f'font-size:11px;border-left:2px solid rgba(0,0,0,.2)">🌧 Rain?</th>'
+        + f'<th style="background:#455a64;color:#fff;padding:6px 8px;'
+          f'font-size:11px;border-left:2px solid rgba(0,0,0,.2)">🌡 Avg Temp</th>'
+    )
+    return row2_ths
+
+
+# ── Public Entry Point ────────────────────────────────────────────────────────
+
+def build_html(
+    day:       str,
+    ilm_rows:  list[IlMeteoHour],
+    ilm_names: list[str],
+    om_ecmwf:  list[HourlyData],
+    om_gfs:    list[HourlyData],
+    vc_rows:   list[HourlyData],
+    bm_rows:   list[HourlyData],
+    mit_rows:  list[HourlyData],
+) -> str:
+    now_str   = datetime.now(ROME_TZ).strftime("%d/%m/%Y %H:%M")
+    target_dt = target_date(day)
+    day_label = {"today": "Today", "tomorrow": "Tomorrow", "day_after_tomorrow": "Day After Tomorrow"}[day]
+    date_str  = target_dt.strftime("%d/%m/%Y")
+
+    def idx(rows): return {r.hour: r for r in rows}
+
+    ilm_idx    = {r.hour: r for r in ilm_rows}
+    oecmwf_idx = idx(om_ecmwf)
+    ogfs_idx   = idx(om_gfs)
+    vc_idx     = idx(vc_rows)
+    bm_idx     = idx(bm_rows)
+    mit_idx    = idx(mit_rows)
+
+    all_hours = sorted(set(
+        list(ilm_idx) + list(oecmwf_idx) + list(ogfs_idx) +
+        list(vc_idx)  + list(bm_idx)     + list(mit_idx)
+    ))
+
+    is_day_map = {r.hour: r.is_day for r in om_ecmwf}
+    if not is_day_map:
+        is_day_map = {r.hour: r.is_day for r in om_gfs}
+
+    n_ilm  = 3
+    names  = (ilm_names[:3] + ["M1", "M2", "M3"])[:3]
+    icon_base64 = _load_icon_base64()
+
+    tbody    = _build_tbody(all_hours, ilm_idx, oecmwf_idx, ogfs_idx,
+                             vc_idx, bm_idx, mit_idx, is_day_map, n_ilm)
+    row2_ths = _build_header(names, n_ilm)
+    hour_hdr  = "background:#444;color:#fff;font-size:10px;width:80px"
+    C = _C
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * {{ box-sizing:border-box; margin:0; padding:0; }}
+  @page {{
+    size: 1600px 3000px;
+    margin: 0;
+  }}
+  body {{
+    font-family:'Segoe UI',Arial,sans-serif; font-size:13px;
+    background:white; padding:14px; color:#1a1a1a;
+  }}
+  h1   {{ font-size:36px; font-weight:800; color:#1a3a6a; margin-bottom:4px; letter-spacing:-1px; text-transform: capitalize; }}
+  .sub {{ font-size:10px; color:#777; margin-bottom:10px; }}
+  table {{ border-collapse:collapse; background:white;
+           border-radius:8px; overflow:hidden; }}
+  th   {{ padding:7px 5px; text-align:center; white-space:nowrap; }}
+  td   {{ padding:5px 6px; text-align:center; vertical-align:middle;
+          border-bottom:1px solid #eaeaea; }}
+  tr:last-child td {{ border-bottom:none; }}
+  td.hour {{
+    font-weight:800; font-size:26px; background:#f4f5f7;
+    border-right:2px solid #ddd; width:85px; color:#333;
+    padding:5px 4px;
+  }}
+  td.na {{ color:#bbb; font-size:11px; }}
+  .ico  {{ font-size:14px; }}
+  .rain {{ color:#1565c0; font-size:10px; }}
+  .wind {{ color:#555; font-size:10px; }}
+  .umid {{ color:#1976d2; font-size:10px; }}
+  .percepita {{ color:#888; font-size:9px; }}
+  .prob {{ color:#c62828; font-size:10px; font-weight:600; }}
+  .s {{
+    background: url('data:image/png;base64,{icon_base64}') no-repeat top left;
+    width:34px; height:34px; overflow:hidden; 
+    display:inline-block; vertical-align:middle; margin-right:2px;
+  }}
+{build_sprite_css()}
+</style>
+</head>
+<body>
+  <h1>🌦 Weather Comparison Bologna — {day_label} {date_str}</h1>
+  <div class="sub">
+    Generated {now_str} · 44.49°N 11.34°E ·
+    Sources: ilmeteo.it · OpenMeteo (ECMWF+GFS) · Visual Crossing · 3bMeteo · meteo.it
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th rowspan="2" style="{hour_hdr}">Hour</th>
+        <th colspan="{n_ilm}" style="background:{C['ilm']};color:#fff;
+            font-size:11px;font-weight:700;padding:7px;
+            border-right:3px solid rgba(255,255,255,.3)">
+          🔵 ilmeteo.it — Numerical Models
+        </th>
+        <th style="background:{C['oecm']};color:#fff;font-size:11px;font-weight:700;
+            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🟢 OpenMeteo</th>
+        <th style="background:{C['ogfs']};color:#fff;font-size:11px;font-weight:700;
+            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🟢 OpenMeteo</th>
+        <th style="background:{C['vc']};color:#fff;font-size:11px;font-weight:700;
+            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🟣 Visual Crossing</th>
+        <th style="background:{C['bm']};color:#fff;font-size:11px;font-weight:700;
+            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🔴 3bMeteo</th>
+        <th style="background:{C['mit']};color:#fff;font-size:11px;font-weight:700;
+            padding:7px;border-right:3px solid rgba(0,0,0,.2)">🟠 meteo.it</th>
+        <th style="background:{C['sum']};color:#fff;font-size:12px;font-weight:700;
+            padding:7px 10px">🌧 Rain?</th>
+        <th style="background:#455a64;color:#fff;font-size:12px;font-weight:700;
+            padding:7px 10px;border-left:2px solid rgba(0,0,0,.2)">🌡 Avg Temp</th>
+        <th rowspan="2" style="{hour_hdr}; border-left:2px solid #ddd">Hour</th>
+      </tr>
+      <tr>{row2_ths}</tr>
+    </thead>
+    <tbody>
+{tbody}    </tbody>
+  </table>
+</body>
+</html>"""
