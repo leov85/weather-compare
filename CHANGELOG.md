@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/leov85/weather-compare/compare/v1.1.0...v1.2.0) (2026-04-07)
+
+### Features
+
+* New feature! Added dynamic table rendering with fetched data only (empty colums are hidden) and summary mode for a quick visualisation of averages only. ([12549d1](https://github.com/leov85/weather-compare/commit/12549d1fb3c4965bdbddc199aa1529c95c685c6f))
+
 # Changelog
 
 ## [1.1.0](https://github.com/leov85/weather-compare/compare/v1.0.0...v1.1.0) (2026-04-04)
