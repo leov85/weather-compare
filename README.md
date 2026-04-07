@@ -32,6 +32,8 @@ The bot compares hourly weather forecasts for **Bologna, Italy** (44.4949°N, 11
 | 5 | **3bmeteo.com** | HTML scraping | Temperature, rain, wind, humidity |
 | 6 | **meteo.it** | HTML scraping + embedded JSON | Temperature, precipitation probability, wind |
 
+> **Note:** The table is dynamic. If a source provides no data, its columns are automatically hidden. Use `--summary` for a condensed view.
+
 Each run produces:
 - A **PNG image** per requested day (today / tomorrow / day after tomorrow)
 - A **JSON snapshot** of all raw data (for replay with `--test-json`)
@@ -227,6 +229,10 @@ python main.py --keep-html
 # Replay from the most recent saved JSON (no network requests)
 python main.py --test-json
 
+# Show only essential summary columns (Hour, Rain Prob, Avg Temp). 
+# Note: The table dynamically hides columns with no data.
+python main.py --summary
+
 # Write outputs to a custom folder
 python main.py --output-dir /path/to/output
 
@@ -259,6 +265,11 @@ crontab -e
 ### PNG image
 
 Each day produces a file like `output_weather/meteo_today.png` — a wide table with one row per hour, showing all sources side by side.
+
+**Dynamic Table Rendering:**
+The table is built dynamically to optimize space:
+- **Data-driven visibility:** If a specific provider fails to return data or is skipped via flags, its corresponding columns are automatically removed from the final HTML/PNG.
+- **Summary Mode:** When the `--summary` flag is used, the table is simplified to show only the calculated averages: Hour, Rain Probability, and Average Temperature. This is ideal for a quick glance.
 
 Columns:
 - **Hour** (left + right)

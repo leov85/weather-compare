@@ -9,6 +9,7 @@ Usage:
     python main.py --no-scraping            # skip 3bmeteo and meteo.it
     python main.py --no-telegram            # do not send to Telegram
     python main.py --keep-html              # also save the HTML file
+    python main.py --summary                # show only Hour, Avg Rain Prob, and Avg Temp
 
 Dependencies:
     pip install "weasyprint<53" requests pillow python-dotenv pytz
@@ -112,6 +113,8 @@ def main() -> None:
                         help="Skip 3bmeteo and meteo.it (faster)")
     parser.add_argument("--test-json",   action="store_true",
                         help="Use last saved JSON instead of fetching new data")
+    parser.add_argument("--summary",     action="store_true",
+                        help="Show only Hour, Avg Rain Prob, and Avg Temp columns")
     args = parser.parse_args()
 
     subfolder = os.path.join(args.output_dir, "output_weather")
@@ -183,7 +186,8 @@ def main() -> None:
 
         # ── Render HTML → PNG ─────────────────────────────────────────────────
         page_html = build_html(day, ilm_rows, ilm_names,
-                               om_ecmwf, om_gfs, vc_rows, bm_rows, mit_rows)
+                                   om_ecmwf, om_gfs, vc_rows, bm_rows, mit_rows,
+                                   summary=args.summary)
 
         if args.keep_html:
             hp = os.path.join(subfolder, f"meteo_{day}.html")

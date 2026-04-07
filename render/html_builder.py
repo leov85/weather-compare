@@ -161,8 +161,17 @@ def _build_tbody(
     mit_idx:     dict[int, HourlyData],
     is_day_map:  dict[int, int],
     n_ilm:       int,
+    summary:     bool = False,
 ) -> str:
     C = _C
+    
+    # Flags for dynamic column rendering
+    show_ilm = bool(ilm_idx) and not summary
+    show_ecm = bool(oecmwf_idx) and not summary
+    show_gfs = bool(ogfs_idx) and not summary
+    show_vc  = bool(vc_idx) and not summary
+    show_bm  = bool(bm_idx) and not summary
+    show_mit = bool(mit_idx) and not summary
 
     def night(cls: str, hour: int) -> str:
         if is_day_map.get(hour, 1) == 1:
@@ -175,24 +184,29 @@ def _build_tbody(
         tbody += f"<tr{row_bg}>"
         tbody += f'<td class="hour">{hour:02d}:00</td>'
 
-        # ── ilmeteo: n_ilm columns ────────────────────────────────────────────
-        ilm = ilm_idx.get(hour)
-        for i in range(n_ilm):
-            if ilm and i < len(ilm.models):
-                tbody += _ilm_cell(ilm.models[i], C["ilm_bg"])
-            else:
-                tbody += f'<td class="na" style="background:{C["ilm_bg"]}">—</td>'
+        if show_ilm:
+            ilm = ilm_idx.get(hour)
+            for i in range(n_ilm):
+                if ilm and i < len(ilm.models):
+                    tbody += _ilm_cell(ilm.models[i], C["ilm_bg"])
+                else:
+                    tbody += f'<td class="na" style="background:{C["ilm_bg"]}">—</td>'
 
-        # ── API and scraping ──────────────────────────────────────────────────
-        tbody += _api_cell(oecmwf_idx.get(hour), C["oecm_bg"], lambda c, h=hour: night(c, h))
-        tbody += _api_cell(ogfs_idx.get(hour),   C["ogfs_bg"], lambda c, h=hour: night(c, h))
-        tbody += _api_cell(vc_idx.get(hour),     C["vc_bg"],   lambda c, h=hour: night(c, h))
-        tbody += _scr_cell(bm_idx.get(hour),     C["bm_bg"],   lambda c, h=hour: night(c, h))
-        tbody += _scr_cell(mit_idx.get(hour),    C["mit_bg"],  lambda c, h=hour: night(c, h))
+        if show_ecm:
+            tbody += _api_cell(oecmwf_idx.get(hour), C["oecm_bg"], lambda c, h=hour: night(c, h))
+        if show_gfs:
+            tbody += _api_cell(ogfs_idx.get(hour),   C["ogfs_bg"], lambda c, h=hour: night(c, h))
+        if show_vc:
+            tbody += _api_cell(vc_idx.get(hour),     C["vc_bg"],   lambda c, h=hour: night(c, h))
+        if show_bm:
+            tbody += _scr_cell(bm_idx.get(hour),     C["bm_bg"],   lambda c, h=hour: night(c, h))
+        if show_mit:
+            tbody += _scr_cell(mit_idx.get(hour),    C["mit_bg"],  lambda c, h=hour: night(c, h))
 
         # ── Rain? ─────────────────────────────────────────────────────────────
         probs: list[int | None] = []
-        if ilm:
+        ilm = ilm_idx.get(hour)
+        if ilm and not summary:
             for mod in ilm.models[:3]:
                 p = estimate_prob(HourlyData(
                     hour=hour, icon_class=mod.icon_class,
@@ -200,24 +214,30 @@ def _build_tbody(
                 ))
                 if p is not None:
                     probs.append(p)
-        for src in [oecmwf_idx.get(hour), ogfs_idx.get(hour),
-                    vc_idx.get(hour), bm_idx.get(hour), mit_idx.get(hour)]:
-            p = estimate_prob(src)
-            if p is not None:
-                probs.append(p)
+        
+        for src_dict in [oecmwf_idx, ogfs_idx, vc_idx, bm_idx, mit_idx]:
+            if src_dict:
+                p = estimate_prob(src_dict.get(hour))
+                if p is not None:
+                    probs.append(p)
         tbody += _rain_summary_cell(probs)
 
         # ── Avg Temp ──────────────────────────────────────────────────────────
         temps: list[str | None] = []
-        if ilm:
+        if ilm and not summary:
             temps += [m.temp for m in ilm.models[:3]]
-        for src in [oecmwf_idx.get(hour), ogfs_idx.get(hour),
-                    vc_idx.get(hour), bm_idx.get(hour), mit_idx.get(hour)]:
-            if src:
-                temps.append(src.temp)
+
+        for src_dict in [oecmwf_idx, ogfs_idx, vc_idx, bm_idx, mit_idx]:
+            if src_dict:
+                r = src_dict.get(hour)
+                if r:
+                    temps.append(r.temp)
+
         tbody += _temp_avg_cell(temps)
 
-        tbody += f'<td class="hour" style="border-left:2px solid #ddd; border-right:none">{hour:02d}:00</td>'
+        if not summary:
+            tbody += (f'<td class="hour" style="border-left:2px solid #ddd; '
+                  f'border-right:none">{hour:02d}:00</td>')
         tbody += "</tr>\n"
 
     return tbody
@@ -225,36 +245,33 @@ def _build_tbody(
 
 # ── Header ────────────────────────────────────────────────────────────────────
 
-def _build_header(names: list[str], n_ilm: int) -> tuple[str, str]:
-    """Returns row2_ths."""
+def _build_header_row2(
+    names: list[str], 
+    show_ilm: bool, 
+    show_ecm: bool, 
+    show_gfs: bool
+) -> str:
+    """Returns the content for the second row of the table header."""
     C = _C
-
-    def hdr2(label: str, col: str, sub: str = "") -> str:
-        sub_html = (f'<br><span style="font-weight:400;font-size:9px">{sub}</span>'
-                    if sub else "")
-        return (f'<th style="background:{col};color:#fff;padding:6px 5px;'
-                f'font-size:10px;border-right:1px solid rgba(255,255,255,.3)">'
-                f'{label}{sub_html}</th>')
-
-    ilm_ths = "".join(
-        f'<th style="background:{C["ilm"]};color:#fff;padding:6px 5px;'
-        f'font-size:10px;border-right:1px solid #2a5ca0">{n}</th>'
-        for n in names
-    )
-
-    row2_ths = (
-        ilm_ths
-        + hdr2("ECMWF IFS",  C["oecm"], "open-meteo.com")
-        + hdr2("GFS",         C["ogfs"], "open-meteo.com")
-        + hdr2("Vis. Cross.", C["vc"],   "visualcrossing.com")
-        + hdr2("3bMeteo",     C["bm"],   "scraping")
-        + hdr2("meteo.it",    C["mit"],  "scraping")
-        + f'<th style="background:{C["sum"]};color:#fff;padding:6px 8px;'
-          f'font-size:11px;border-left:2px solid rgba(0,0,0,.2)">🌧 Rain?</th>'
-        + f'<th style="background:#455a64;color:#fff;padding:6px 8px;'
-          f'font-size:11px;border-left:2px solid rgba(0,0,0,.2)">🌡 Avg Temp</th>'
-    )
-    return row2_ths
+    row2 = ""
+    if show_ilm:
+        row2 += "".join(
+            f'<th style="background:{C["ilm"]};color:#fff;padding:6px 5px;'
+            f'font-size:16px;border-right:1px solid #2a5ca0">{n}</th>'
+            for n in names
+        )
+    
+    if show_ecm:
+        row2 += (f'<th style="background:{C["oecm"]};color:#fff;padding:6px 5px;'
+                 f'font-size:16px;border-right:1px solid rgba(255,255,255,.3)">'
+                 f'ECMWF IFS<br><span style="font-weight:400;font-size:9px">'
+                 f'open-meteo.com</span></th>')
+    if show_gfs:
+        row2 += (f'<th style="background:{C["ogfs"]};color:#fff;padding:6px 5px;'
+                 f'font-size:16px;border-right:1px solid rgba(255,255,255,.3)">'
+                 f'GFS<br><span style="font-weight:400;font-size:9px">'
+                 f'open-meteo.com</span></th>')
+    return row2
 
 
 # ── Public Entry Point ────────────────────────────────────────────────────────
@@ -268,6 +285,7 @@ def build_html(
     vc_rows:   list[HourlyData],
     bm_rows:   list[HourlyData],
     mit_rows:  list[HourlyData],
+    summary:   bool = False,
 ) -> str:
     now_str   = datetime.now(ROME_TZ).strftime("%d/%m/%Y %H:%M")
     target_dt = target_date(day)
@@ -296,12 +314,58 @@ def build_html(
     n_ilm  = 3
     names  = (ilm_names[:3] + ["M1", "M2", "M3"])[:3]
     icon_base64 = _load_icon_base64()
+    C = _C
+    hour_hdr = "background:#444;color:#fff;font-size:24px;width:80px"
+    
+    # Column availability logic
+    show_ilm = bool(ilm_rows) and not summary
+    show_ecm = bool(om_ecmwf) and not summary
+    show_gfs = bool(om_gfs) and not summary
+    show_vc  = bool(vc_rows) and not summary
+    show_bm  = bool(bm_rows) and not summary
+    show_mit = bool(mit_rows) and not summary
 
     tbody    = _build_tbody(all_hours, ilm_idx, oecmwf_idx, ogfs_idx,
-                             vc_idx, bm_idx, mit_idx, is_day_map, n_ilm)
-    row2_ths = _build_header(names, n_ilm)
-    hour_hdr  = "background:#444;color:#fff;font-size:10px;width:80px"
-    C = _C
+                             vc_idx, bm_idx, mit_idx, is_day_map, n_ilm, summary)
+    row2_ths = _build_header_row2(names, show_ilm, show_ecm, show_gfs)
+    
+    # Construct Row 1 Headers
+    h_row1 = f'<th rowspan="2" style="{hour_hdr}">Hour</th>'
+    
+    if show_ilm:
+        h_row1 += (f'<th colspan="{n_ilm}" style="background:{C["ilm"]};color:#fff;'
+                   f'font-size:16px;font-weight:700;padding:7px;'
+                   f'border-right:3px solid rgba(255,255,255,.3)">'
+                   f'ilmeteo.it — Modelli Numerici</th>')
+    
+    om_colspan = (1 if show_ecm else 0) + (1 if show_gfs else 0)
+    if om_colspan > 0:
+        h_row1 += (f'<th colspan="{om_colspan}" style="background:{C["oecm"]};color:#fff;'
+                   f'font-size:16px;font-weight:700;padding:7px;'
+                   f'border-right:1px solid rgba(255,255,255,.3)">OpenMeteo</th>')
+                   
+    if show_vc:
+        h_row1 += (f'<th rowspan="2" style="background:{C["vc"]};color:#fff;font-size:19px;'
+                   f'padding:7px;border-right:1px solid rgba(255,255,255,.3)">'
+                   f'Visual Crossing<br><span style="font-weight:400;font-size:10px">'
+                   f'visualcrossing.com</span></th>')
+    if show_bm:
+        h_row1 += (f'<th rowspan="2" style="background:{C["bm"]};color:#fff;font-size:19px;'
+                   f'padding:7px;border-right:1px solid rgba(255,255,255,.3)">'
+                   f'3bMeteo<br><span style="font-weight:400;font-size:10px">'
+                   f'scraping</span></th>')
+    if show_mit:
+        h_row1 += (f'<th rowspan="2" style="background:{C["mit"]};color:#fff;font-size:19px;'
+                   f'padding:7px;border-right:3px solid rgba(0,0,0,.2)">'
+                   f'meteo.it<br><span style="font-weight:400;font-size:10px">'
+                   f'scraping</span></th>')
+                   
+    h_row1 += (f'<th rowspan="2" style="background:{C["sum"]};color:#fff;font-size:19px;'
+               f'padding:7px 10px">🌧 Rain?</th>')
+    h_row1 += (f'<th rowspan="2" style="background:#455a64;color:#fff;font-size:19px;'
+               f'padding:7px 10px;border-left:2px solid rgba(0,0,0,.2)">🌡 Avg. Temp</th>')
+    if not summary:
+        h_row1 += f'<th rowspan="2" style="{hour_hdr};border-left:2px solid #ddd">Hour</th>'
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -351,30 +415,10 @@ def build_html(
     Generated {now_str} · 44.49°N 11.34°E ·
     Sources: ilmeteo.it · OpenMeteo (ECMWF+GFS) · Visual Crossing · 3bMeteo · meteo.it
   </div>
-  <table>
+    <table>
     <thead>
       <tr>
-        <th rowspan="2" style="{hour_hdr}">Hour</th>
-        <th colspan="{n_ilm}" style="background:{C['ilm']};color:#fff;
-            font-size:11px;font-weight:700;padding:7px;
-            border-right:3px solid rgba(255,255,255,.3)">
-          🔵 ilmeteo.it — Numerical Models
-        </th>
-        <th style="background:{C['oecm']};color:#fff;font-size:11px;font-weight:700;
-            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🟢 OpenMeteo</th>
-        <th style="background:{C['ogfs']};color:#fff;font-size:11px;font-weight:700;
-            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🟢 OpenMeteo</th>
-        <th style="background:{C['vc']};color:#fff;font-size:11px;font-weight:700;
-            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🟣 Visual Crossing</th>
-        <th style="background:{C['bm']};color:#fff;font-size:11px;font-weight:700;
-            padding:7px;border-right:1px solid rgba(255,255,255,.3)">🔴 3bMeteo</th>
-        <th style="background:{C['mit']};color:#fff;font-size:11px;font-weight:700;
-            padding:7px;border-right:3px solid rgba(0,0,0,.2)">🟠 meteo.it</th>
-        <th style="background:{C['sum']};color:#fff;font-size:12px;font-weight:700;
-            padding:7px 10px">🌧 Rain?</th>
-        <th style="background:#455a64;color:#fff;font-size:12px;font-weight:700;
-            padding:7px 10px;border-left:2px solid rgba(0,0,0,.2)">🌡 Avg Temp</th>
-        <th rowspan="2" style="{hour_hdr}; border-left:2px solid #ddd">Hour</th>
+        {h_row1}
       </tr>
       <tr>{row2_ths}</tr>
     </thead>
