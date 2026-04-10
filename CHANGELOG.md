@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/leov85/weather-compare/compare/v1.2.0...v1.2.1) (2026-04-10)
+
+### Bug Fixes
+
+* 3bmeteo icon fix for "nubi basse" and "nubi basse e schiarite" ([1feb4cf](https://github.com/leov85/weather-compare/commit/1feb4cf13368528e2aa8e0af396ee84f96dba041))
+
 ## [1.2.0](https://github.com/leov85/weather-compare/compare/v1.1.0...v1.2.0) (2026-04-07)
 
 ### Features
