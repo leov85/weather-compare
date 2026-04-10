@@ -86,6 +86,8 @@ THREEBMETEO_ALT_TO_CLASS: dict[str, str] = {
     "velature estese":  "ss3",
     "parz nuvoloso":    "ss3",
     "pioggia e schiarite": "ss5",
+    "nubi basse":         "ss14",
+    "nubi basse e schiarite": "ss14",
 }
 
 # Wind directions → degrees
