@@ -1,3 +1,9 @@
+## [1.2.2](https://github.com/leov85/weather-compare/compare/v1.2.1...v1.2.2) (2026-04-11)
+
+### Bug Fixes
+
+* Css styles in a separated css file ([7980544](https://github.com/leov85/weather-compare/commit/7980544c1d558e84455f6bdc53d57e12b3236ca0))
+
 ## [1.2.1](https://github.com/leov85/weather-compare/compare/v1.2.0...v1.2.1) (2026-04-10)
 
 ### Bug Fixes
