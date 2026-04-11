@@ -30,12 +30,22 @@ _C = {
 }
 
 _ICON_PATH = os.path.join("utils", "s-cartoon2016b-34.png")
+_CSS_FILE   = os.path.join(os.path.dirname(__file__), "static", "style.css")
 
 
 def _load_icon_base64() -> str:
     if os.path.exists(_ICON_PATH):
         with open(_ICON_PATH, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
+    return ""
+
+
+def _load_static_css() -> str:
+    """Loads the main CSS from the static folder."""
+    if os.path.exists(_CSS_FILE):
+        with open(_CSS_FILE, "r", encoding="utf-8") as f:
+            return f.read()
+    log.warning("[html_builder] CSS file not found: %s", _CSS_FILE)
     return ""
 
 
@@ -313,7 +323,13 @@ def build_html(
 
     n_ilm  = 3
     names  = (ilm_names[:3] + ["M1", "M2", "M3"])[:3]
+    
     icon_base64 = _load_icon_base64()
+    static_css  = _load_static_css()
+    sprite_css  = build_sprite_css()
+    # Dynamic background for the base sprite class
+    dynamic_icon_css = f".s {{ background-image: url('data:image/png;base64,{icon_base64}'); }}"
+
     C = _C
     hour_hdr = "background:#444;color:#fff;font-size:24px;width:80px"
     
@@ -372,41 +388,9 @@ def build_html(
 <head>
 <meta charset="UTF-8">
 <style>
-  * {{ box-sizing:border-box; margin:0; padding:0; }}
-  @page {{
-    size: 1600px 3000px;
-    margin: 0;
-  }}
-  body {{
-    font-family:'Segoe UI',Arial,sans-serif; font-size:13px;
-    background:white; padding:14px; color:#1a1a1a;
-  }}
-  h1   {{ font-size:36px; font-weight:800; color:#1a3a6a; margin-bottom:4px; letter-spacing:-1px; text-transform: capitalize; }}
-  .sub {{ font-size:10px; color:#777; margin-bottom:10px; }}
-  table {{ border-collapse:collapse; background:white;
-           border-radius:8px; overflow:hidden; }}
-  th   {{ padding:7px 5px; text-align:center; white-space:nowrap; }}
-  td   {{ padding:5px 6px; text-align:center; vertical-align:middle;
-          border-bottom:1px solid #eaeaea; }}
-  tr:last-child td {{ border-bottom:none; }}
-  td.hour {{
-    font-weight:800; font-size:26px; background:#f4f5f7;
-    border-right:2px solid #ddd; width:85px; color:#333;
-    padding:5px 4px;
-  }}
-  td.na {{ color:#bbb; font-size:11px; }}
-  .ico  {{ font-size:14px; }}
-  .rain {{ color:#1565c0; font-size:10px; }}
-  .wind {{ color:#555; font-size:10px; }}
-  .umid {{ color:#1976d2; font-size:10px; }}
-  .percepita {{ color:#888; font-size:9px; }}
-  .prob {{ color:#c62828; font-size:10px; font-weight:600; }}
-  .s {{
-    background: url('data:image/png;base64,{icon_base64}') no-repeat top left;
-    width:34px; height:34px; overflow:hidden; 
-    display:inline-block; vertical-align:middle; margin-right:2px;
-  }}
-{build_sprite_css()}
+{static_css}
+{dynamic_icon_css}
+{sprite_css}
 </style>
 </head>
 <body>
