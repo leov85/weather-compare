@@ -26,13 +26,13 @@ _URLS = {
 }
 
 # Module-level compiled regex
-_HOUR_PAT       = re.compile(r'(\d{1,2})<span class="small">:00</span>')
-_IMG_PAT        = re.compile(r'<img[^>]+alt="([^"]+)"')
-_TEMP_PAT       = re.compile(r'switchcelsius[^>]*>\s*([\d.-]+)')
-_RAIN_MM_PAT    = re.compile(r'(\d+(?:[.,]\d+)?)\s*mm')
-_WIND_SPEED_PAT = re.compile(r'switchkm[^>]*>\s*(\d+)\s*</span>')
-_WIND_DIR_PAT   = re.compile(r'</span>\s*(?:&nbsp;|\s)*([a-zA-Z]{1,3})')
-_HUMIDITY_PAT   = re.compile(r'altriDati-umidita[^>]*>\s*(\d+)%')
+_HOUR_PAT       = re.compile(r'ds-forecast-time">(\d{1,2})</span>')
+_DESC_PAT       = re.compile(r'fc-accordion-condition">.*?<span[^>]*>\s*([^<]+?)\s*</span>', re.DOTALL)
+_TEMP_PAT       = re.compile(r'data-temp-c="([\d.-]+)"')
+_RAIN_MM_PAT    = re.compile(r'alt="Precipitazioni".*?>\s*([\d.,]+)\s*mm', re.DOTALL)
+_WIND_SPEED_PAT = re.compile(r'data-wind-kmh="(\d+)"')
+_WIND_DIR_PAT   = re.compile(r'data-wind-dir="([a-zA-Z]{1,3})"')
+_HUMIDITY_PAT   = re.compile(r'data-param="umidita".*?>\s*(\d+)%', re.DOTALL)
 
 
 def fetch(day: str) -> list[HourlyData]:
@@ -47,13 +47,13 @@ def fetch(day: str) -> list[HourlyData]:
 
     # Isolate hourly table, discard historical data and footer
     table_content = re.split(
-        r'id="dati-climatici-container"|class="sc_c"|id="citynewsdomain"',
+        r'id="content-esaorario"|id="citynewsdomain"',
         page_html, flags=re.I
     )[0]
 
     hourly_blocks = re.findall(
-        r'(<div class="row-table noPad">.*?)(?=<div class="row-table noPad">|\Z)',
-        table_content, re.DOTALL,
+        r'(<li class="fc-accordion-item".*?)(?=<li class="fc-accordion-item"|\Z)',
+        table_content, re.DOTALL
     )
 
     rows: list[HourlyData] = []
@@ -65,16 +65,16 @@ def fetch(day: str) -> list[HourlyData]:
         if day == "today" and hour < current_hour:
             continue
 
-        img_m        = _IMG_PAT.search(blk)
+        desc_m       = _DESC_PAT.search(blk)
         temp_m       = _TEMP_PAT.search(blk)
         rain_mm_m    = _RAIN_MM_PAT.search(blk)
         wind_speed_m = _WIND_SPEED_PAT.search(blk)
         wind_dir_m   = _WIND_DIR_PAT.search(blk)
         humidity_m   = _HUMIDITY_PAT.search(blk)
 
-        # desc is the alt text from the scraped image — kept in Italian
+        # desc is the text from the condition span — kept in Italian
         # as it must match the keys in THREEBMETEO_ALT_TO_CLASS
-        desc       = img_m.group(1).strip().lower() if img_m else ""
+        desc       = desc_m.group(1).strip().lower() if desc_m else ""
         icon_class = THREEBMETEO_ALT_TO_CLASS.get(desc, "")
 
         vento_deg: int | None = None
