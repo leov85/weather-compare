@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/leov85/weather-compare/compare/v1.2.2...v1.2.3) (2026-05-31)
+
+### Bug Fixes
+
+* 3bmeteo scraper fixed ([778452b](https://github.com/leov85/weather-compare/commit/778452b9d2384654ff15f923d146d358aa9e2ebc))
+* update 3bmeteo scraper to match new website layout ([492770d](https://github.com/leov85/weather-compare/commit/492770d65a17e715685ea8d0d2c743418e54403e))
+
 ## [1.2.2](https://github.com/leov85/weather-compare/compare/v1.2.1...v1.2.2) (2026-04-11)
 
 ### Bug Fixes
